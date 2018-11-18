@@ -1,0 +1,65 @@
+---
+- hosts: all
+  become: true
+  tasks:
+    - name: Make sure we can connect
+      ping:
+    - name: update teh apt cache
+      apt: update_cache=yes cache_valid_time=3600
+    - name:
+      apt:
+        name:
+          - php
+          - php-fpm
+          - php-mysql
+          - php-xml
+        state: present
+    - name: Remove apache2
+      apt: name=apache2 state=absent
+    - name: install MySQL
+      apt:
+        name:
+          - mysql-server
+          - mysql-client
+          - python-mysqldb
+          - python3-pymysql
+          - python-pymysql
+          - python3-mysqldb
+          - mysql-utilities
+        state: present
+    - name: generate new root password
+      command: openssl rand -hex 7 creates=/root/.my.cnf
+      register: mysql_new_root_pass
+    - debug:
+        msg: "new root pw is {{mysql_new_root_pass.stdout}}"
+      when: mysql_new_root_pass.changed
+    - debug:
+        msg: "no change to root password"
+      when: not mysql_new_root_pass.changed
+    - name: create my.cnf
+      template: src=templates/mysql/my.cnf dest=/root/.my.cnf
+    - name: remove anon users
+      mysql_user:
+        name: ''
+        host: localhost
+        state: absent
+      when: mysql_new_root_pass.changed
+    - name: remove test db
+      mysql_db:
+        name: test
+        host: localhost
+        state: absent
+      when: mysql_new_root_pass.changed
+    - name: update root pw
+      mysql_user:
+        name: root
+        password: "{{mysql_new_root_pass.stdout}}"
+        with items:
+          - "{{ ansible_hostname }}"
+          - 127.0.0.1
+          - ::1
+          - localhost
+      when: mysql_new_root_pass.changed
+    - debug:
+        msg: "new root pw is {{mysql_new_root_pass.stdout}}"
+      when: mysql_new_root_pass.changed
